@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <root>
-	<async threadcount="4"/>
+	<async threadcount="1"/>
 	<!--defultconnection 默认的连接名称, connectionnum 每种连接的连接数, 连接数最大值为 async中threadcount+1 -->
-	<mysql defultconnection="wol3d" connectionnum = "2" perfiletime="60">
+	<profile mem_check="true" cpu_check="true" check_time="20" open_prof = "true"/>
+	<mysql defultconnection="wol3d" connectionnum = "2" perfiletime="60" >
 		<connection name="wol3d" hostip="10.94.28.21" port="6306" username="snk" password="123456" databasename="wol3d" characterset="utf8"/>
 	</mysql>
 </root>

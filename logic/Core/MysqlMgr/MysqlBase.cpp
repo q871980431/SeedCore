@@ -1,5 +1,6 @@
 ﻿#include "MysqlBase.h"
 #include "DBConnection.h"
+#include "MysqlMgr.h"
 
 void MysqlResult::Init(MYSQL *mysql)
 {
@@ -26,7 +27,11 @@ void MysqlResult::Init(MYSQL *mysql)
 
 bool MysqlBase::OnExecute(IKernel * kernel, s32 queueId, s32 threadIdx)
 {
-	bool ret = _connection->execute(_mysqlHandler->GetExecSql(_connection));
+	bool ret = false;
+	auto callFun = [&ret, this](const char *pExecSql) {
+		ret = _connection->execute(pExecSql); 
+	};
+	_mysqlHandler->ExecSql(_connection, callFun);
 	if (ret)
 		_result.Init(_connection->GetMYSQL());
 	else
@@ -49,6 +54,7 @@ void MysqlBase::OnFailed(IKernel * kernel, bool isExecuted)
 
 void MysqlBase::OnRelease(IKernel * kernel)
 {
+	_mysqlMgr->OnBaseRelease();
 	_mysqlHandler->OnRelease();
 	DEL this;
 }

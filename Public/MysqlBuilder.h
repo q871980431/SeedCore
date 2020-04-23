@@ -27,6 +27,7 @@ typedef std::string FinalSQL;
 typedef std::string OrderByExp;
 typedef std::string SetFiledSQL;
 
+const static s32 DEFAULT_CONTEXT_LEN = 32;
 const static s32 MYSQL_TABLE_NAME_LEN = 64;
 const static char MYSQL_ESCAPE_CHAR = '`';
 const static char MYSQL_STR_SPLIT = '\'';
@@ -89,13 +90,22 @@ public:
 		LESS = 2,
 	};
 	SQLCommand(void *context, s32 size, ESCAPE_STR_FUN fun, const char *table) : _size(size), _fun(fun) {
-		_context = malloc(size);
+		_context = size <= DEFAULT_CONTEXT_LEN ? _defaultContext : malloc(size);
 		memcpy(_context, context, size);
+		_size = size;
 		_table = MYSQL_ESCAPE_CHAR;
 		_table << table;
 		_table << MYSQL_ESCAPE_CHAR;
 	}
-	virtual const char * ToStr() = 0;
+	virtual ~SQLCommand() 
+	{
+		if (_context != _defaultContext)
+			free(_context);
+	};
+
+	virtual std::string & ToStr() = 0;
+	virtual void clear() = 0;
+
 	template< class T>
 	SQLCommand & Where(const char *filedName, SYMBOL symbol, T val);
 	WHERE_LOGIC_EXP_DEC(A,nd);
@@ -121,9 +131,9 @@ protected:
 	void AddFiledVal(std::string &src, const char *val, s32 len)
 	{
 		char *dst = (char *)alloca(GetEscapeBuffSize(len));
-		EscapeStr(val, len, dst);
+		s32 dstLen = EscapeStr(val, len, dst);
 		src.push_back(MYSQL_STR_SPLIT);
-		src.append(dst);
+		src.append(dst, dstLen);
 		src.push_back(MYSQL_STR_SPLIT);
 	}
 
@@ -133,6 +143,7 @@ protected:
 protected:
 	void *_context;
 	s32 _size;
+	char _defaultContext[DEFAULT_CONTEXT_LEN];
 	ESCAPE_STR_FUN _fun;
 
 	tlib::TString<MYSQL_TABLE_NAME_LEN> _table;
@@ -167,10 +178,10 @@ WHERE_LOGIC_EXP_DEF(O, r)
 class QuerySQLCommand : public SQLCommand
 {
 public:
-	QuerySQLCommand(void *context, s32 size, ESCAPE_STR_FUN fun, const char *table) : SQLCommand(context, size, fun, table), _rowCount(0), _offSet(0){}
+	QuerySQLCommand(void *context, s32 size, ESCAPE_STR_FUN fun, const char *table) : SQLCommand(context, size, fun, table){}
 
-	virtual const char * ToStr();
-
+	virtual std::string & ToStr();
+	virtual void clear();
 public:
 	QuerySQLCommand & Select(const char *name){
 		if (!_selects.empty())
@@ -230,8 +241,8 @@ protected:
 	NameSet	_selects;
 	FinalSQL _final;
 	OrderByExp _orderBy;
-	s32 _rowCount;
-	s32 _offSet;
+	s32 _rowCount = {0};
+	s32 _offSet = {0};
 };
 
 
@@ -239,7 +250,8 @@ class UpdateSQLCommand : public SQLCommand
 {
 public:
 	UpdateSQLCommand(void *context, s32 size, ESCAPE_STR_FUN fun, const char *table) : SQLCommand(context, size, fun, table){}
-	virtual const char * ToStr();
+	virtual std::string & ToStr();
+	virtual void clear();
 
 	template<typename T>
 	UpdateSQLCommand & SetFiled(const char *name, const T &val)
@@ -261,6 +273,17 @@ public:
 		return *this;
 	}
 
+	UpdateSQLCommand & SetBlobFiled(const char *name, const void *content, s32 len)
+	{
+		if (!_setFiledSQL.empty())
+			_setFiledSQL.append(MYSQL_SPILT_STR);
+
+		AddFiledName(_setFiledSQL, name);
+		_setFiledSQL.append(MYSQL_KEYWORD_EQ);
+		AddFiledVal(_setFiledSQL, (const char *)content, len);
+		return *this;
+	}
+
 protected:
 private:
 	SetFiledSQL	_setFiledSQL;
@@ -271,7 +294,8 @@ class InsertSQLCommand : public SQLCommand
 {
 public:
 	InsertSQLCommand(void *context, s32 size, ESCAPE_STR_FUN fun, const char *table) : SQLCommand(context, size, fun, table) {}
-	virtual const char * ToStr();
+	virtual std::string & ToStr();
+	virtual void clear();
 
 	template<typename T>
 	InsertSQLCommand & SetFiled(const char *name, const T &val)
@@ -294,6 +318,19 @@ public:
 		SetFiled(args...);
 		return *this;
 	}
+
+	InsertSQLCommand & SetBlobFiled(const char *name, const void *content, s32 len)
+	{
+		if (!_fileds.empty())
+		{
+			_fileds.append(MYSQL_SPILT_STR);
+			_values.append(MYSQL_SPILT_STR);
+		}
+
+		AddFiledName(_fileds, name);
+		AddFiledVal(_values, (const char *)content, len);
+		return *this;
+	}
 protected:
 private:
 	FinalSQL _final;
@@ -305,15 +342,22 @@ class SaveSQLCommand : public SQLCommand
 {
 public:
 	SaveSQLCommand(void *context, s32 size, ESCAPE_STR_FUN fun, const char *table) : SQLCommand(context, size, fun, table) {}
-	virtual const char * ToStr();
+	virtual std::string & ToStr();
+	virtual void clear();
+
 
 	struct FiledNode 
 	{
 		template<typename T>
-		FiledNode(const char *name, const T &val)
+		FiledNode(SaveSQLCommand &saveCommand, const char *name, const T &val)
 		{
 			_filed = name;
-			AddFiledVal(_val, val);
+			saveCommand.AddFiledVal(_val, val);
+		}
+		FiledNode(SaveSQLCommand &saveCommand, const char *name, const void *content, s32 len)
+		{
+			_filed = name;
+			saveCommand.AddFiledVal(_val, (const char *)content, len);
 		}
 		const char *_filed;
 		std::string _val;
@@ -322,7 +366,7 @@ public:
 	template<typename T>
 	SaveSQLCommand & SetKey(const char *name, const T &val)
 	{
-		_keys.emplace_back(name, val);
+		_keys.emplace_back(*this, name, val);
 		return *this;
 	}
 
@@ -337,7 +381,7 @@ public:
 	template<typename T>
 	SaveSQLCommand & SetFiled(const char *name, const T &val)
 	{
-		_clumns.emplace_back(name, val);
+		_clumns.emplace_back(*this, name, val);
 		return *this;
 	}
 
@@ -346,6 +390,12 @@ public:
 	{
 		SetFiled(name, val);
 		SetFiled(args...);
+		return *this;
+	}
+
+	SaveSQLCommand & SetBlobFiled(const char *name, const void *content, s32 len)
+	{
+		_clumns.emplace_back(*this, name, content, len);
 		return *this;
 	}
 protected:

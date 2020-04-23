@@ -111,12 +111,13 @@ bool DBConnection::isActive()
 
 bool DBConnection::InnerExecute(const char *sql)
 {
-	int ret = mysql_real_query(&_mysqlHandler, sql, strlen(sql));
+	unsigned long len = strlen(sql);
+	int ret = mysql_real_query(&_mysqlHandler, sql, len);
 	if (ret == 0)
 		return true;
 	if (!isActive())
 		return false;
-	ret = mysql_real_query(&_mysqlHandler, sql, strlen(sql));
+	ret = mysql_real_query(&_mysqlHandler, sql, len);
 	return ret == 0 ? true : false;
 }
 

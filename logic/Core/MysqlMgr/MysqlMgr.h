@@ -25,11 +25,14 @@ public:
 	virtual void OnStart(IKernel *kernel, s64 tick) {};
 	virtual void OnTime(IKernel *kernel, s64 tick);
 	virtual void OnTerminate(IKernel *kernel, s64 tick, bool isKill) {};
+	void OnBaseRelease() { _releaseBaseCount += 1; };
 
 public:
 	virtual bool PushMysqlHandler(const s64 id, IMysqlHandler *handler, const char *connectionName = nullptr);
 	virtual s32  EscapeStringExInMainThread(const char* pszSrc, int nSize, char* pszDest, const char *connectionName = nullptr);
 	virtual IEscapeStringHandler * GetEscapeStringHandlerInMainThread(const char *connectionName = nullptr);
+
+public:
 	virtual s32  EscapeStringExInAsyncThread(const s32 threadIdx, const char* pszSrc, int nSize, char* pszDest, const char *connectionName = nullptr);
 	virtual IEscapeStringHandler * GetEscapeStringHandlerInAsyncThread(const s32 threadIdx, const char *connectionName = nullptr);
 	virtual bool ExecSqlInAsyncThread(const s32 threadIdx, const char* sql, const char *connectionName = nullptr);
@@ -51,5 +54,7 @@ private:
 	s32						_asyncConnectionNum;
 	std::vector<DBConnection*> *_mainConnection;
 	s32						_perfileTime;
+	s32						_createBaseCount = {0};
+	s32						_releaseBaseCount = {0};
 };
 #endif

@@ -40,6 +40,7 @@ bool MysqlMgr::Destroy(IKernel *kernel)
 void MysqlMgr::OnTime(IKernel *kernel, s64 tick)
 {
 	TRACE_LOG("MysqlProfile:");
+	TRACE_LOG("MysqlBase Create Num:%d, Release Num:%d", _createBaseCount, _releaseBaseCount);
 	for (const auto &iter : _connctionMap)
 	{
 		TRACE_LOG("Connection:%s, Info:", iter.first.c_str());
@@ -70,6 +71,7 @@ bool MysqlMgr::PushMysqlHandler(const s64 id, IMysqlHandler *handler, const char
 
 	MysqlBase *base = NEW MysqlBase(this, connection, handler);
 	handler->SetBase(base);
+	_createBaseCount++;
 	s_kernel->StartAsync(threadIdx, base, __FILE__, __LINE__);
 	return true;
 }

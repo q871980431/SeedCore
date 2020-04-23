@@ -51,11 +51,12 @@ public:
 class IMysqlHandler
 {
 public:
+	typedef std::function<void(const char *pExecSql)> SqlExecCallBackFun;
 	IMysqlHandler() :_base(nullptr) {};
 	virtual ~IMysqlHandler() {};
 
 	//Work In Work Thread
-	virtual const char * GetExecSql(IEscapeStringHandler *pEscapeStrHandler) = 0;
+	virtual void ExecSql(IEscapeStringHandler *pEscapeStrHandler, const SqlExecCallBackFun &callBackFun) = 0;
 	
 public:
 	//Work In Main Thread

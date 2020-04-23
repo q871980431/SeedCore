@@ -9,7 +9,7 @@ void SQLCommand::AddSymbol(std::string &src, SYMBOL symbol)
 	}
 }
 
-const char * QuerySQLCommand::ToStr()
+std::string & QuerySQLCommand::ToStr()
 {
 	if (_final.empty())
 	{
@@ -29,10 +29,19 @@ const char * QuerySQLCommand::ToStr()
 		}
 		_final.push_back(MYSQL_END_CHAR);
 	}
-	return _final.c_str();
+	return _final;
 }
 
-const char * UpdateSQLCommand::ToStr()
+void QuerySQLCommand::clear()
+{
+	_selects.clear();
+	_final.clear();
+	_orderBy.clear();
+	_rowCount = 0;
+	_offSet = 0;
+}
+
+std::string & UpdateSQLCommand::ToStr()
 {
 	if (_final.empty())
 	{
@@ -45,10 +54,16 @@ const char * UpdateSQLCommand::ToStr()
 		_final.push_back(MYSQL_END_CHAR);
 	}
 
-	return _final.c_str();
+	return _final;
 }
 
-const char * InsertSQLCommand::ToStr()
+void UpdateSQLCommand::clear()
+{
+	_final.clear();
+	_setFiledSQL.clear();
+}
+
+std::string & InsertSQLCommand::ToStr()
 {
 	if (_final.empty())
 	{
@@ -62,10 +77,17 @@ const char * InsertSQLCommand::ToStr()
 		_final.push_back(MYSQL_END_CHAR);
 	}
 
-	return _final.c_str();
+	return _final;
 }
 
-const char * SaveSQLCommand::ToStr()
+void InsertSQLCommand::clear()
+{
+	_final.clear();
+	_fileds.clear();
+	_values.clear();
+}
+
+std::string & SaveSQLCommand::ToStr()
 {
 	if (_final.empty())
 	{
@@ -77,14 +99,14 @@ const char * SaveSQLCommand::ToStr()
 		{
 			if (mark)
 				_final.append(MYSQL_SPILT_STR);
-			_final.append(iter._filed);
+			AddFiledName(_final, iter._filed);
 			mark = true;
 		}
 		for (auto &iter : _clumns)
 		{
 			if (mark)
 				_final.append(MYSQL_SPILT_STR);
-			_final.append(iter._filed);
+			AddFiledName(_final, iter._filed);
 			mark = true;
 		}
 		_final.append(" ) VALUES ( ");
@@ -96,7 +118,6 @@ const char * SaveSQLCommand::ToStr()
 			_final.append(iter._val.c_str());
 			mark = true;
 		}
-		mark = false;
 		for (auto &iter : _clumns)
 		{
 			if (mark)
@@ -110,7 +131,7 @@ const char * SaveSQLCommand::ToStr()
 		{
 			if (mark)
 				_final.append(MYSQL_SPILT_STR);
-			_final.append(iter._filed);
+			AddFiledName(_final, iter._filed);
 			_final.append(MYSQL_KEYWORD_EQ);
 			_final.append(iter._val);
 			mark = true;
@@ -118,5 +139,12 @@ const char * SaveSQLCommand::ToStr()
 		_final.push_back(MYSQL_END_CHAR);
 	}
 
-	return _final.c_str();
+	return _final;
+}
+
+void SaveSQLCommand::clear()
+{
+	_final.clear();
+	_keys.clear();
+	_clumns.clear();
 }
