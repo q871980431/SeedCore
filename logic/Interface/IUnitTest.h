@@ -12,7 +12,8 @@ class IUnitTest : public IModule
 {
 public:
     virtual ~IUnitTest(){};
-    
+	virtual s32 GetUnitTestId() = 0;
+	virtual void CompleteTest(s32 testId) = 0;
 };
 
 class IUnitTestInstance

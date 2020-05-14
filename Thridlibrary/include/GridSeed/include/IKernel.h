@@ -22,13 +22,6 @@
 #define FOREVER	-1
 
 
-#define LUA_LOG(content)\
-{\
-    char log[LOG_BUFF_SIZE] = { 0 }; \
-    SafeSprintf(log, sizeof(log), "[LUA]: %s", (content)); \
-    core::G_KERNEL::g_kernel->AsyncLog(log);\
-}
-
 #ifdef WIN32
 #define DEBUG_LOG(format, ...)\
 {\
@@ -37,6 +30,7 @@
 		constexpr static const char * name = getFileName(__FILE__, sizeof(__FILE__) - 1);\
 		char log[LOG_BUFF_SIZE] = { 0 }; \
 		SafeSprintf(log, sizeof(log), "[DEBUG]: %s:%d:%s | "#format, name, __LINE__, __FUNCTION__, ##__VA_ARGS__); \
+		PrintToConsel(core::G_KERNEL::g_stdHandle, 0x08, log);\
 		core::G_KERNEL::g_kernel->AsyncLog(log);\
 	}\
 }
@@ -48,7 +42,7 @@
 		constexpr static const char * name = getFileName(__FILE__, sizeof(__FILE__) - 1);\
 		char log[LOG_BUFF_SIZE] = { 0 }; \
 		SafeSprintf(log, sizeof(log), "[TRACE]: %s:%d:%s | "#format, name, __LINE__, __FUNCTION__, ##__VA_ARGS__); \
-		printf("%s\n", log);\
+		PrintToConsel(core::G_KERNEL::g_stdHandle, 0x06, log);\
 		core::G_KERNEL::g_kernel->AsyncLog(log); \
 	}\
 }
@@ -60,6 +54,19 @@
 		constexpr static const char * name = getFileName(__FILE__, sizeof(__FILE__) - 1);\
 		char log[LOG_BUFF_SIZE] = { 0 }; \
 		SafeSprintf(log, sizeof(log), "[ERROR]: %s:%d:%s | "#format, name, __LINE__, __FUNCTION__, ##__VA_ARGS__); \
+		PrintToConsel(core::G_KERNEL::g_stdHandle, 0x04, log);\
+		core::G_KERNEL::g_kernel->AsyncLog(log); \
+	}\
+}
+
+#define LABEL_LOG(logLvl, label, format, ...)\
+{\
+	if(logLvl >= core::G_KERNEL::g_logLvl)\
+	{									  \
+		constexpr static const char * name = getFileName(__FILE__, sizeof(__FILE__) - 1);\
+		char log[LOG_BUFF_SIZE] = { 0 }; \
+		SafeSprintf(log, sizeof(log), "[%s]: %s:%d:%s | "#format, label, name, __LINE__, __FUNCTION__, ##__VA_ARGS__); \
+		PrintToConsel(core::G_KERNEL::g_stdHandle, 0x02, log);\
 		core::G_KERNEL::g_kernel->AsyncLog(log); \
 	}\
 }
@@ -69,6 +76,7 @@
 	constexpr static const char * name = getFileName(__FILE__, sizeof(__FILE__) - 1);\
     char log[LOG_BUFF_SIZE] = { 0 }; \
     SafeSprintf(log, sizeof(log), "[%s]: %s:%d:%s | "#format, labl, name, __LINE__, __FUNCTION__, ##__VA_ARGS__); \
+	PrintToConsel(core::G_KERNEL::g_stdHandle, 0x02, log);\
     core::G_KERNEL::g_kernel->SyncLog(log); \
 }
 
@@ -108,6 +116,17 @@
 	core::G_KERNEL::g_kernel->AsyncLog(log); \
 }
 
+#define LABEL_LOG(logLvl, label, format, a...)\
+{\
+	if(logLvl >= core::G_KERNEL::g_logLvl)\
+	{									  \
+		constexpr static const char * name = getFileName(__FILE__, sizeof(__FILE__) - 1);\
+		char log[LOG_BUFF_SIZE] = { 0 }; \
+		SafeSprintf(log, sizeof(log), "[%s]: %s:%d:%s | "#format, label, name, __LINE__, __FUNCTION__, ##a); \
+		core::G_KERNEL::g_kernel->AsyncLog(log); \
+	}\
+}
+
 #define IMPORTANT_LOG(labl, format, a...)\
 {\
 	constexpr static const char * name = getFileName(__FILE__, sizeof(__FILE__) - 1);\
@@ -141,6 +160,9 @@ namespace core
 	{
 		static IKernel *g_kernel;
 		static s32 g_logLvl;
+#ifdef WIN32
+		static HANDLE g_stdHandle;
+#endif
 	};
 
 	enum LOG_LEVEL
@@ -305,6 +327,7 @@ namespace core
         virtual const  char* GetEnvirPath() = 0;
         virtual const char * GetCmdArg(const char *name) = 0;
 		virtual const char * GetProcName() = 0;
+		virtual void ShutDown() = 0;
     };
 }
 

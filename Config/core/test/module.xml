@@ -1,4 +1,4 @@
 <root path="./">
 	<module name="UnitTest"/>
-	<module name="MysqlMgr"/>	
+	<module name="ScriptEngine"/>	
 </root>
