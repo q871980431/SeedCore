@@ -1,4 +1,0 @@
-<root path="./">
-	<module name="UnitTest"/>
-	<module name="ScriptEngine"/>	
-</root>
