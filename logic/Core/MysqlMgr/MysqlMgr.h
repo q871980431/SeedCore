@@ -41,9 +41,9 @@ public:
 protected:
 	bool LoadConfigFile(IKernel *kernel);
 	DBConnection * GetDBConnection(const u32 threadIdx, const char *connectionName);
-	inline u32 GetConnectionThreadIdx(u64 id) { return id % _asyncConnectionNum; };
-	inline u32 GetConnectionMainThreadIdx() { return _asyncConnectionNum; };
-	inline bool CheckThreadIdx(s32 threadIdx) { return 0 <= threadIdx && (threadIdx < _asyncConnectionNum); };
+	inline u32 GetConnectionThreadIdx(u64 id) { return (id % _asyncConnectionNum) + 1; };
+	inline u32 GetConnectionMainThreadIdx() { return 0; };
+	inline bool CheckThreadIdx(s32 threadIdx) { return 0 < threadIdx && (threadIdx <= _asyncConnectionNum); };
 
 private:
     static MysqlMgr     * s_self;

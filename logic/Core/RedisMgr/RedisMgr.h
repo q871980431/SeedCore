@@ -1,4 +1,4 @@
-/*
+﻿/*
  * File:	RedisMgr.h
  * Author:	xuping
  * 
@@ -7,8 +7,21 @@
 
 #ifndef __RedisMgr_h__
 #define __RedisMgr_h__
-#include "IRedisMgr.h"
 
+#include "IRedisMgr.h"
+#include <vector>
+
+struct RedisConnectionConfig 
+{
+	std::string ip;
+	s32 port;
+	s32 connectNum;
+	s32 connectTimeOut;		//s
+	std::string passWord;
+};
+
+class redisContext;
+typedef std::vector<redisContext*> VecRedisContext;
 class RedisMgr : public IRedisMgr
 {
 public:
@@ -17,9 +30,15 @@ public:
     virtual bool Initialize(IKernel *kernel);
     virtual bool Launched(IKernel *kernel);
     virtual bool Destroy(IKernel *kernel);
-protected:
+private:
+	redisContext* CreateRedisContext();
+
+	bool LoadConfigFile();
 private:
     static RedisMgr     * s_self;
     static IKernel  * s_kernel;
+	static RedisConnectionConfig	s_connectionConfig;
+	static VecRedisContext	s_vecRedisContext;
+	static s32		  s_connectNum;
 };
 #endif
