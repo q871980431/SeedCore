@@ -20,7 +20,7 @@
 }
 
 #define FOREVER	-1
-
+#define MAIN_THREAD_IDX 0
 
 #ifdef WIN32
 #define DEBUG_LOG(format, ...)\
@@ -247,6 +247,7 @@ namespace core
 		inline void SetBase(ITrace * base) { _base = base; }
 		inline ITrace * GetBase() { return _base; }
 
+		//threadIdx范围为[1, threadNum]
 		virtual bool OnExecute(IKernel * kernel, s32 queueId, s32 threadIdx) = 0;
 		virtual void OnSuccess(IKernel * kernel) = 0;
 		virtual void OnFailed(IKernel * kernel, bool isExecuted) = 0;
@@ -259,7 +260,7 @@ namespace core
 	{
 	public:
 		virtual ~IAsyncQueue() {};
-
+		//相同threadId 执行handler保证执行时许
 		virtual void StartAsync(const s64 threadId, IAsyncHandler * handler, const char * file, const s32 line) = 0;
 		virtual void StopAsync(IAsyncHandler * handler) = 0;
 		virtual s32  GetQueueId() = 0;

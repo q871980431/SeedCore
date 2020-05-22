@@ -43,6 +43,10 @@ private:
 	static void callExceptionLuaFunc(IKernel *kernel, IDataInputStream &input, IDataOutputStream &out);
 
 private:
+	//测试 c++调用lua和lua调用c++调用开销
+
+
+private:
 	static IScriptEngine *_scriptEngine;
 };
 
