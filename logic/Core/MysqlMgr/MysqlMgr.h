@@ -28,6 +28,7 @@ public:
 	void OnBaseRelease() { _releaseBaseCount += 1; };
 
 public:
+	virtual void SetAsyncQueue(core::IAsyncQueue *asyncQueue) { _asyncQueue = asyncQueue; };
 	virtual bool PushMysqlHandler(const s64 id, IMysqlHandler *handler, const char *connectionName = nullptr);
 	virtual s32  EscapeStringExInMainThread(const char* pszSrc, int nSize, char* pszDest, const char *connectionName = nullptr);
 	virtual IEscapeStringHandler * GetEscapeStringHandlerInMainThread(const char *connectionName = nullptr);
@@ -53,6 +54,7 @@ private:
 	ConnectionMap			_connctionMap;
 	s32						_asyncConnectionNum;
 	std::vector<DBConnection*> *_mainConnection;
+	core::IAsyncQueue		  *_asyncQueue;
 	s32						_perfileTime;
 	s32						_createBaseCount = {0};
 	s32						_releaseBaseCount = {0};

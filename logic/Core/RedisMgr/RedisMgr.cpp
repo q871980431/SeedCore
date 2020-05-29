@@ -9,13 +9,21 @@
 #include "hiredis.h"
 #include "XmlReader.h"
 #include "RedisHelper.h"
-#include "win32.h"
+#include "Tools.h"
+#include "Tools_time.h"
+#include <set>
+
+
+const int32_t REATTEMPT_SLEEP_TIME = 1000;
+const int32_t CONNECTION_TIMER_TIME =  60 * 1000;
+const int32_t REDIS_KEY_TOP_COUNT = 20;
 
 RedisMgr * RedisMgr::s_self = nullptr;
 IKernel * RedisMgr::s_kernel = nullptr;
 RedisConnectionConfig RedisMgr::s_connectionConfig;
-VecRedisContext RedisMgr::s_vecRedisContext;
+VecConnection RedisMgr::s_vecRedisContext;
 s32 RedisMgr::s_connectNum;
+core::IAsyncQueue * RedisMgr::s_asyncQueue = nullptr;
 
 bool RedisMgr::Initialize(IKernel *kernel)
 {
@@ -29,92 +37,39 @@ bool RedisMgr::Initialize(IKernel *kernel)
 		redisContext *ctx = CreateRedisContext(s_connectionConfig.connectTV);
 		if (ctx == nullptr)
 			return false;
-
-		s_vecRedisContext.push_back(ctx);
+		RedisConnection connection;
+		connection.ctx = ctx;
+#ifdef _DEBUG
+		connection._watchMutex = NEW std::mutex();
+#endif
+		s_vecRedisContext.push_back(connection);
 	}
 	s_connectNum = s_connectionConfig.connectNum;
+	s_asyncQueue = s_kernel->GetMainAsyncQueue();
     
     return true;
 }
 
-void __redisSetErrorInner(redisContext *c, int type, const char *str) {
-	size_t len;
-
-	c->err = type;
-	if (str != NULL) {
-		len = strlen(str);
-		len = len < (sizeof(c->errstr) - 1) ? len : (sizeof(c->errstr) - 1);
-		memcpy(c->errstr, str, len);
-		c->errstr[len] = '\0';
-	}
-	else {
-		/* Only REDIS_ERR_IO may lack a description! */
-		assert(type == REDIS_ERR_IO);
-		strerror_r(errno, c->errstr, sizeof(c->errstr));
-	}
-}
-
-int redisBufferWriteInner(redisContext *c) {
-
-	/* Return early when the context has seen an error. */
-	if (c->err)
-		return REDIS_ERR;
-
-	int32_t *len = ((int32_t *)c->obuf - 1);
-	while (*len > 0)
-	{
-		int32_t nwritten = send(c->fd, c->obuf, *len, 0);
-		if (nwritten < 0) {
-			if ((errno == EWOULDBLOCK && !(c->flags & REDIS_BLOCK)) || (errno == EINTR)) {
-				/* Try again later */
-			}
-			else {
-				__redisSetErrorInner(c, REDIS_ERR_IO, NULL);
-				return REDIS_ERR;
-			}
-		}
-		*len -= nwritten;
-		c->obuf = c->obuf + nwritten;
-	}
-	return REDIS_OK;
-}
 
 
-int redisGetReplyInner(redisContext *c, void **reply) {
-	void *aux = NULL;
-	if (redisBufferWriteInner(c) == REDIS_ERR)
-		return REDIS_ERR;
-
-	/* Read until there is a reply */
-	do {
-		if (redisBufferRead(c) == REDIS_ERR)
-			return REDIS_ERR;
-		if (redisGetReplyFromReader(c, &aux) == REDIS_ERR)
-			return REDIS_ERR;
-	} while (aux == NULL);
-
-	/* Set reply or free it if we were passed NULL */
-	if (reply != NULL) {
-		*reply = aux;
-	}
-	else {
-		freeReplyObject(aux);
-	}
-
-	return REDIS_OK;
-}
 
 bool RedisMgr::Launched(IKernel *kernel)
 {
+	bool del;
+	Del("xuping", del);
+	std::string content;
+	int32_t getRet = Get("xuping", content);
+	bool success;
+	SetStringWithOption("xuping", "this is xuping", SetCmdOptionType_NX, 0, success);
 	RedisCmdBuilder builder;
 	builder << "keys" << "*";
 	builder.Commit();
-	redisContext &ctx = GetRedisContext(0);
+	auto &connection = GetRedisConnection(0);
 	char *newCmd;
 	int len;
 	len = redisFormatCommand(&newCmd, "GET xuping");
 	redisReply *reply = nullptr;
-	int32_t ret2 = sendAndGetReply(&ctx, builder, reply);
+	int32_t ret2 = sendAndGetReply(connection.ctx, builder, &reply);
 	if (ret2 == REDIS_OK && reply != nullptr)
 	{
 		ECHO("OK");
@@ -134,9 +89,41 @@ bool RedisMgr::Launched(IKernel *kernel)
 		}
 	}
 	TestPipeline();
+	
+	ConnetionProfileTimer *profileTimer = NEW ConnetionProfileTimer();
+	ADD_TIMER(profileTimer, CONNECTION_TIMER_TIME, FOREVER, CONNECTION_TIMER_TIME);
 
     return true;
 }
+
+void RedisMgr::OnFlushConnectionTimer()
+{
+	s32 threadNum = 0;
+	std::set<s32> threadIds;
+	s_asyncQueue->GetQueueInfo(threadNum, threadIds);
+	for (auto threadId : threadIds)
+	{
+		FlushConnectionHandler *flushConnectionHandler = NEW FlushConnectionHandler(threadId);
+		s_asyncQueue->StartAsync(threadId, flushConnectionHandler, "", __LINE__);
+	}
+}
+
+void RedisMgr::OnFlushConnection(s32 threadIdx)
+{
+	RedisConnection &connection = GetRedisConnection(threadIdx);
+	{
+		std::lock_guard<std::mutex> lockGurd(*connection._watchMutex);
+		connection._mainWatch = connection._threadWatch;
+		connection._mainKeyProfileMap.clear();
+		connection._mainKeyProfileMap = connection._threadKeyProfileMap;
+	}
+}
+
+void RedisMgr::OnExecRedisTask(RedisConnection *redisConnection)
+{
+
+}
+
 
 void RedisMgr::TestPipeline()
 {
@@ -154,29 +141,51 @@ void RedisMgr::TestPipeline()
 	builder2.Commit();
 	vecBuilder.push_back(&builder2);
 
-	redisContext &ctx = GetRedisContext(0);
+	auto &connection = GetRedisConnection(0);
 	VecRedisReply vecReply;
-	int32_t ret = pipelineSendAndGetReply(&ctx, vecBuilder, vecReply);
+	int32_t ret = pipelineSendAndGetReply(connection.ctx, vecBuilder, vecReply);
 	if (ret == REDIS_OK)
 	{
 		ECHO("pipeline ok");
 	}
 }
 
-int32_t RedisMgr::execCmd(s32 threadIdx, const RedisCmdBuilder &cmdBuilder, redisReply *&reply)
-{
-	redisContext &ctx = GetRedisContext(0);
-	int32_t ret = sendAndGetReply(&ctx, cmdBuilder, reply);
-	if (ret == REDIS_ERR_IO)
-	{
-		redis
-	}
+//void RedisMgr::addAsyncTask(s64 taskId, std::unique_ptr<RedisCmdBuilder> &cmdBuilderPtr)
+//{
+//	auto &connection = GetRedisConnectionInAsync(taskId);
+//	//connection._threadCmdList.push_back(cmdBuilderPtr);
+//}
 
+int32_t RedisMgr::execCmd(s32 threadIdx, const RedisCmdBuilder &cmdBuilder, redisReply **reply, bool reSend)
+{
+	auto &connection = GetRedisConnection(threadIdx);
+	int32_t ret = sendAndGetReply(connection.ctx, cmdBuilder, reply);
+	if (reSend && ret == REDIS_ERR_IO)
+	{
+		auto callFun = [&cmdBuilder, &reply](RedisConnection &redisConnetion)->bool
+		{
+			int32_t tmpRet = sendAndGetReply(redisConnetion.ctx, cmdBuilder, reply);
+			return tmpRet != REDIS_ERR_IO;
+		};
+		execTaskByTimeOut(connection, callFun);
+	}
+	return 0;
 }
 
-int32_t RedisMgr::batchExecCmd(s32 threadIdx, const VecRedisBuilder &vecBuilder, VecRedisReply &vecReply)
+int32_t RedisMgr::batchExecCmd(s32 threadIdx, const VecRedisBuilder &vecBuilder, VecRedisReply &vecReply, bool reSend)
 {
-
+	auto &connection = GetRedisConnection(threadIdx);
+	int32_t ret = pipelineSendAndGetReply(connection.ctx, vecBuilder, vecReply);
+	if (reSend && ret == REDIS_ERR_IO)
+	{
+		auto callFun = [&vecBuilder, &vecReply](RedisConnection &redisConnetion)->bool
+		{
+			int32_t tmpRet = pipelineSendAndGetReply(redisConnetion.ctx, vecBuilder, vecReply);
+			return tmpRet != REDIS_ERR_IO;
+		};
+		execTaskByTimeOut(connection, callFun);
+	}
+	return REDIS_OK;
 }
 
 
@@ -186,7 +195,78 @@ bool RedisMgr::Destroy(IKernel *kernel)
     return true;
 }
 
-int32_t RedisMgr::sendAndGetReply(redisContext *ct, const RedisCmdBuilder &cmdBuilder, redisReply *&reply)
+struct KeyProfileNode
+{
+	int32_t iCount;
+	std::string strKey;
+	KeyProfileNode() {};
+	KeyProfileNode(const KeyProfileNode &stVal) : iCount(stVal.iCount), strKey(stVal.strKey) {};
+	KeyProfileNode(KeyProfileNode &&stVal)
+	{
+		iCount = stVal.iCount;
+		strKey.swap(stVal.strKey);
+	}
+	bool operator<(const KeyProfileNode &stVal) const
+	{
+		if (iCount == stVal.iCount)
+		{
+			return strKey > stVal.strKey;
+		}
+		return iCount > stVal.iCount;
+	}
+};
+
+std::string GetProfileAndReset(KeyProfileMap mapKeyProfile)
+{
+	typedef std::set<KeyProfileNode> KeyProfileSet;
+	KeyProfileSet setKeyProfile;
+	std::string strProfile;
+	int64_t iCount = 0;
+	for (auto &iter : mapKeyProfile)
+	{
+		iCount += iter.second;
+
+		KeyProfileNode stProfileNode;
+		stProfileNode.iCount = iter.second;
+		stProfileNode.strKey = iter.first;
+		setKeyProfile.insert(std::move(stProfileNode));
+	}
+	auto iter = setKeyProfile.begin();
+	for (int32_t i = 0; (i < REDIS_KEY_TOP_COUNT) && (iter != setKeyProfile.end()); i++, iter++)
+	{
+		strProfile.append("\n Key:");
+		strProfile.append(iter->strKey);
+		strProfile.append(" Use Count:");
+		strProfile.append(std::to_string(iter->iCount));
+	}
+	strProfile.append("\nTotal Key Count:");
+	strProfile.append(std::to_string(iCount));
+	return strProfile;
+}
+
+std::string RedisMgr::ProfileInfo()
+{
+	std::stringstream ostream;
+	for (size_t i = 0; i < s_vecRedisContext.size(); i++)
+	{
+		auto &connection = s_vecRedisContext[i];
+		RedisExecWatch watch;
+		KeyProfileMap profileMap;
+		{
+			std::lock_guard<std::mutex> lockGuard(*connection._watchMutex);
+			watch = connection._mainWatch;
+			profileMap = connection._mainKeyProfileMap;
+		}
+
+		ostream << "connection " << i << " info:";
+		ostream << "\nexpends:\n" << watch.CreatePerformanceInfo();
+		ostream << "\nkey profile:\n" << GetProfileAndReset(profileMap) << "\n";
+	}
+
+	return ostream.str();
+}
+
+int32_t RedisMgr::sendAndGetReply(redisContext *ct, const RedisCmdBuilder &cmdBuilder, redisReply **reply)
 {
 #ifdef _DEBUG
 	if (!cmdBuilder.IsCommit())
@@ -197,10 +277,10 @@ int32_t RedisMgr::sendAndGetReply(redisContext *ct, const RedisCmdBuilder &cmdBu
 #endif
 
 	ct->obuf = (char*)cmdBuilder.GetSendBuff();
-	return redisGetReplyInner(ct, (void**)&reply);
+	return RedisWraaper::redisGetReplyInner(ct, (void**)reply);
 }
 
-int32_t RedisMgr::pipelineSendAndGetReply(redisContext *ct, VecRedisBuilder &vecBuilder, VecRedisReply &vecReply)
+int32_t RedisMgr::pipelineSendAndGetReply(redisContext *ct, const VecRedisBuilder &vecBuilder, VecRedisReply &vecReply)
 {
 	int32_t iSize = (int32_t)vecBuilder.size();
 	for (const auto &iter : vecBuilder)
@@ -213,7 +293,7 @@ int32_t RedisMgr::pipelineSendAndGetReply(redisContext *ct, VecRedisBuilder &vec
 		}
 #endif
 		ct->obuf = (char *)iter->GetSendBuff();
-		if (redisBufferWriteInner(ct) == REDIS_ERR)
+		if (RedisWraaper::redisBufferWriteInner(ct) == REDIS_ERR)
 			return REDIS_ERR;
 	}
 
@@ -241,6 +321,28 @@ int32_t RedisMgr::pipelineSendAndGetReply(redisContext *ct, VecRedisBuilder &vec
 	return REDIS_OK;
 }
 
+void RedisMgr::execTaskByTimeOut(RedisConnection & connection, const std::function<bool(RedisConnection &connetion)> &callFunc)
+{
+	s64 enterTime = tools::GetTimeMillisecond();
+	do 
+	{
+		redisContext *ctx = CreateRedisContext(s_connectionConfig.connectTV);
+		if (ctx != nullptr)
+		{
+			redisFree(connection.ctx);
+			connection.ctx = ctx;
+			if (callFunc(connection))
+				break;
+		}
+		s64 now = tools::GetTimeMillisecond();
+		if (now - enterTime > s_connectionConfig.reattemptTime)
+		{
+			break;
+		}
+		Sleep(REATTEMPT_SLEEP_TIME);
+	} while (true);
+}
+
 
 redisContext * RedisMgr::CreateRedisContext(const timeval &tv)
 {
@@ -266,14 +368,30 @@ redisContext * RedisMgr::CreateRedisContext(const timeval &tv)
 	return ctx;
 }
 
-redisContext & RedisMgr::GetRedisContext(s32 threadIdx)
+RedisConnection & RedisMgr::GetRedisConnection(s32 threadIdx)
 {
 	if (threadIdx == MAIN_THREAD_IDX)
 	{
-		return *s_vecRedisContext[0];
+		return s_vecRedisContext[0];
 	}
 	threadIdx = ((u32)threadIdx % s_connectNum) + 1;
-	return *s_vecRedisContext[threadIdx];
+	return s_vecRedisContext[threadIdx];
+}
+
+RedisConnection & RedisMgr::GetRedisConnectionInAsync(s64 taskId)
+{
+	taskId = ((u64)taskId % s_connectNum) + 1;
+	return s_vecRedisContext[taskId];
+}
+
+
+void RedisMgr::RecordExecKey(s32 threadIdx, const std::string &key)
+{
+	(void)threadIdx;
+	(void)key;
+#ifdef _DEBUG
+
+#endif
 }
 
 

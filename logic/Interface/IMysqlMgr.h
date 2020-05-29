@@ -77,7 +77,8 @@ class IMysqlMgr : public IModule
 public:
 	typedef std::function<void(core::IKernel *kernel, const IDBResult *dbResult)> ExecCallBackFun;
     virtual ~IMysqlMgr(){};
-    
+	virtual void SetAsyncQueue(core::IAsyncQueue *asyncQueue) = 0;
+
 	//执行于主线程中的同步接口
 	//相同的connectionId执行具有先后顺序 connectionName为null 则为默认的数据库连接名
 	virtual bool  PushMysqlHandler(const s64 id, IMysqlHandler *handler, const char *connectionName = nullptr) = 0;

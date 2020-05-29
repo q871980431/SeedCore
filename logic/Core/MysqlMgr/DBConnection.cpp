@@ -7,7 +7,6 @@
 #include "DBConnection.h"
 #include "Tools_time.h"
 #include "Tools.h"
-#include "StopWatch.h"
 #include <string.h>
 
 
@@ -74,7 +73,7 @@ bool DBConnection::reopen()
 bool DBConnection::execute(const char* sql)
 {
 	_traceInfo._execCount++;
-	StopWatch watch;
+	tools::StopWatch<> watch;
 	bool ret = InnerExecute(sql);
 	s64 execTime = watch.Interval();
 	if (execTime > _traceInfo._maxExecTime)

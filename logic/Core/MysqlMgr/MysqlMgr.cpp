@@ -19,6 +19,7 @@ bool MysqlMgr::Initialize(IKernel *kernel)
     s_kernel = kernel;
 	if (!LoadConfigFile(kernel))
 		return false;
+	_asyncQueue = s_kernel->GetMainAsyncQueue();
 
     return true;
 }
@@ -72,7 +73,7 @@ bool MysqlMgr::PushMysqlHandler(const s64 id, IMysqlHandler *handler, const char
 	MysqlBase *base = NEW MysqlBase(this, connection, handler);
 	handler->SetBase(base);
 	_createBaseCount++;
-	s_kernel->StartAsync(threadIdx, base, __FILE__, __LINE__);
+	_asyncQueue->StartAsync(threadIdx, base, __FILE__, __LINE__);
 	return true;
 }
 

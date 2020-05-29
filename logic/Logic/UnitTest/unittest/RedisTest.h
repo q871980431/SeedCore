@@ -3,6 +3,15 @@
 
 #include "IUnitTest.h"
 #include "IRedisMgr.h"
+#include "AtomicIntrusiveLinkedList.h"
+#include <thread>
+
+struct TestNode 
+{
+	s32 id;
+	folly::AtomicIntrusiveLinkedListHook<TestNode> hook_;
+};
+typedef folly::AtomicIntrusiveLinkedList<TestNode, &TestNode::hook_> TestNodeList;
 
 class RedisTest : public IUnitTestInstance
 {
@@ -12,6 +21,11 @@ public:
 protected:
 private:
 	static IRedisMgr	*s_redisMgr;
+	std::thread		s_producter;
+	std::thread		s_consumer;
+	TestNodeList	s_nodeList;
+	bool			_close{false};
 };
+
 
 #endif //

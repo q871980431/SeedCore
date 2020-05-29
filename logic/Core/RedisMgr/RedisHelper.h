@@ -4,6 +4,8 @@
 #include "MultiSys.h"
 #include <string>
 #include <functional>
+#include <vector>
+#include <map>
 
 const s32   HEAD_CONTENT_BUFF = 20;	//len buff
 class RedisCmdBuilder
@@ -115,12 +117,32 @@ public:
 	bool GetInteger(s64 &val);
 	bool GetFloat(double &val);
 	bool GetStr(const char *&val, s32 &len);
+	bool GetString(std::string &strVal);
 	bool ForeachArray(const std::function<void(RedisResult&)> &eachFun);
+	bool IsNil();
+
+public:
+	bool IsOK();
+	bool ParseStringArray(std::vector<std::string> &vals);
+	bool ParseStringMap(std::map<std::string, std::string> &vals);
+
 protected:
 
 private:
 	redisReply *_reply;
 	bool _free;
 };
+
+struct redisContext;
+class RedisWraaper
+{
+public:
+	static int redisBufferWriteInner(redisContext *c);
+	static int redisGetReplyInner(redisContext *c, void **reply);
+
+private:
+	static void __redisSetErrorInner(redisContext *c, int type, const char *str);
+};
+
 
 #endif
