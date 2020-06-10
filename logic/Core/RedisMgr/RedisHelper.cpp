@@ -69,19 +69,16 @@ bool RedisResult::ForeachArray(const std::function<void(RedisResult&)> &eachFun)
 
 bool RedisResult::IsNil()
 {
-	return _reply->type == REDIS_REPLY_INTEGER;
+	return _reply->type == REDIS_REPLY_NIL;
 }
 
 bool RedisResult::IsOK()
 {
-	const char *retStr = nullptr;
-	s32 len = 0;
-	if (GetStr(retStr, len))
+	if (_reply->type == REDIS_REPLY_STATUS)
 	{
-		if (strcmp(retStr, "OK") == 0)
+		if (strcmp(_reply->str, "OK") == 0)
 			return true;
 	}
-
 	return false;
 }
 

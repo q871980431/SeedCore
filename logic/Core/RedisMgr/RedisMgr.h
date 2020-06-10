@@ -16,6 +16,7 @@
 #include <mutex>
 #include <unordered_map>
 #include <memory>
+#include "AtomicIntrusiveLinkedList.h"
 
 struct RedisConnectionConfig 
 {
@@ -33,20 +34,26 @@ typedef PerformanceWatch<tools::StopWatch<>> RedisExecWatch;
 typedef std::unordered_map<std::string, int32_t> KeyProfileMap;
 //typedef std::list<std::unique_ptr<RedisCmdBuilder>> RedisCmdList;
 
-struct  
+struct  RedisCmdNode
 {
+	RedisCmdBuilder *cmdBuilder;
+	folly::AtomicIntrusiveLinkedListHook<RedisCmdNode> hook_;
 };
+typedef folly::AtomicIntrusiveLinkedList<RedisCmdNode, &RedisCmdNode::hook_> RedisCmdList;
 
+class RedisTaskHandler;
 struct RedisConnection 
 {
-	redisContext *ctx;
-	//RedisCmdList _threadCmdList;
-	s32			 _threadIdx;
+	redisContext *ctx{nullptr};
+	RedisCmdList *_threadCmdList{nullptr};
+	s32			 _threadIdx{1};
+	RedisTaskHandler *_redisTaskHandler{nullptr};
+	bool		_postTask{false};
 #ifdef _DEBUG
 	s32	_count{0};
 	RedisExecWatch _mainWatch;
 	RedisExecWatch _threadWatch;
-	std::mutex	   *_watchMutex;
+	std::mutex	   *_watchMutex{nullptr};
 	KeyProfileMap  _mainKeyProfileMap;
 	KeyProfileMap  _threadKeyProfileMap;
 #endif
@@ -82,7 +89,7 @@ public:
 	static void OnExecRedisTask(RedisConnection *redisConnection);
 
 private:
-	//void addAsyncTask(s64 taskId, std::unique_ptr<RedisCmdBuilder> &cmdBuilderPtr);
+	void addAsyncTask(s64 taskId, RedisCmdBuilder *cmdBuilderPtr);
 	int32_t execCmd(s32 threadIdx, const RedisCmdBuilder &cmdBuilder, redisReply **reply, bool reSend = true);
 	int32_t batchExecCmd(s32 threadIdx, const VecRedisBuilder &vecBuilder, VecRedisReply &vecReply, bool reSend = true);
 	inline s32 GetThreadIdx(s64 taskId) { return ((s32)taskId == MAIN_THREAD_IDX) ? 1 : (s32)taskId; }
@@ -153,6 +160,7 @@ public:
 	virtual bool OnExecute(IKernel * kernel, s32 queueId, s32 threadIdx)
 	{
 		RedisMgr::OnExecRedisTask(_redisConnection);
+		return true;
 	};
 	virtual void OnSuccess(IKernel * kernel) { (void)kernel; };
 	virtual void OnFailed(IKernel * kernel, bool isExecuted) { (void)kernel; (void)isExecuted; };

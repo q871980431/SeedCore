@@ -5,8 +5,7 @@ public:
 	//String
 public:
 	virtual REDIS_RESULT AsyncSet(s64 taskId, const std::string &strKey, const std::string &strVal) override;
-	virtual REDIS_RESULT AsyncSetEx(s64 taskId, const std::string &strKey, const std::string &strVal, const s32 ttlSeconds) override;
-	virtual REDIS_RESULT AsyncSetNx(s64 taskId, const std::string &strKey, const std::string &strVal) override;
+	virtual REDIS_RESULT AsyncSetStringWithOption(s64 taskId, const std::string &strKey, const std::string &strValue, SetCmdOptionType iOption, u32 iExpireMS) override;
 	virtual REDIS_RESULT AsyncIncr(s64 taskId, const std::string &strKey, s64 &iOutVal) override;
 	virtual REDIS_RESULT AsyncIncrby(s64 taskId, const std::string &strKey, s64 iVal, s64 &iOutVal) override;
 	virtual REDIS_RESULT AsyncDecr(s64 taskId, const std::string &strKey, s64 &iOutVal) override;

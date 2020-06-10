@@ -28,19 +28,18 @@ bool UnitTest::Initialize(IKernel *kernel)
 
 bool UnitTest::Launched(IKernel *kernel)
 {
-	//for (auto &test : s_testList)
-	//{
-	//	test->StartTest(kernel);
-	//}
+	TEST_LOG("***************unit test begin********************");
 	for (const auto &name : s_testModuleNames)
 	{
 		auto iter = s_testMap.find(name);
 		if (iter != s_testMap.end())
 		{
+			TEST_LOG("module:%s test begin", name.c_str());
 			iter->second->StartTest(kernel);
+			TEST_LOG("module:%s test end", name.c_str());
 		}
 	}
-
+	TEST_LOG("***************unit test end********************");
 
     return true;
 }

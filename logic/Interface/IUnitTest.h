@@ -8,6 +8,29 @@
 #ifndef  __IUnitTest_h__
 #define __IUnitTest_h__
 #include "IModule.h"
+
+#define TEST_EQ(A, B) if ((A) != (B))\
+{\
+	constexpr static const char * name = getFileName(__FILE__, sizeof(__FILE__) - 1);\
+	std::stringstream ostream;\
+	ostream << (A) << " don't eq " << (B);\
+	std::string tmp(ostream.str());\
+    char log[LOG_BUFF_SIZE] = { 0 }; \
+    SafeSprintf(log, sizeof(log), "[%s]: %s:%d:%s | TEST EQ FAILED:%s", "Error", name, __LINE__, __FUNCTION__, tmp.c_str()); \
+	PrintToConsel(core::G_KERNEL::g_stdHandle, 0x02, log);\
+    core::G_KERNEL::g_kernel->ThreadLog("UnitTest", log); \
+}
+
+#define TEST_LOG(format, ...)\
+{\
+	constexpr static const char * tmpFileName = getFileName(__FILE__, sizeof(__FILE__) - 1);\
+    char log[LOG_BUFF_SIZE] = { 0 }; \
+    SafeSprintf(log, sizeof(log), "[UnitTest]: %s:%d:%s | "#format, tmpFileName, __LINE__, __FUNCTION__, ##__VA_ARGS__); \
+	PrintToConsel(core::G_KERNEL::g_stdHandle, 0x02, log);\
+    core::G_KERNEL::g_kernel->ThreadLog("UnitTest", log); \
+}
+
+
 class IUnitTest : public IModule
 {
 public:

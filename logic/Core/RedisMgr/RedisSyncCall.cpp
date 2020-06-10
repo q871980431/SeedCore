@@ -56,7 +56,7 @@ REDIS_RESULT RedisMgr::Exists(const std::string &strKey, bool &exists, s32 threa
 	exists = false;
 	RecordExecKey(threadIdx, strKey);
 	RedisCmdBuilder cmdBuilder;
-	cmdBuilder << "DEL" << strKey;
+	cmdBuilder << "EXISTS" << strKey;
 	cmdBuilder.Commit();
 	redisReply *reply = nullptr;
 	auto ret = (REDIS_RESULT)execCmd(threadIdx, cmdBuilder, &reply);
@@ -83,7 +83,7 @@ REDIS_RESULT RedisMgr::SetStringWithOption(const std::string &strKey, const std:
 {
 	RecordExecKey(threadIdx, strKey);
 	RedisCmdBuilder cmdBuilder;
-	cmdBuilder << "SET" << strKey;
+	cmdBuilder << "SET" << strKey << strValue;
 
 	bSuccess = false;
 	if (iExpireMS != 0)
@@ -95,7 +95,7 @@ REDIS_RESULT RedisMgr::SetStringWithOption(const std::string &strKey, const std:
 		cmdBuilder << "NX";
 
 	if (iOption == SetCmdOptionType_XX)
-		cmdBuilder << "EX";
+		cmdBuilder << "XX";
 
 	cmdBuilder.Commit();
 	redisReply *reply = nullptr;
@@ -258,7 +258,7 @@ REDIS_RESULT RedisMgr::MGet(const StringVector &vecFileds, StringVector &vecOutV
 {
 	for (const auto &iter : vecFileds)
 		RecordExecKey(threadIdx, iter);
-
+	vecOutVal.clear();
 	RedisCmdBuilder cmdBuilder;
 	cmdBuilder << "MGET";
 	for (const auto &iter : vecFileds)
@@ -388,6 +388,7 @@ REDIS_RESULT RedisMgr::HGet(const std::string &strKey, const std::string &strFil
 REDIS_RESULT RedisMgr::HMGet(const std::string &strKey, const StringVector &vecFileds, StringVector &vecOutVal, s32 threadIdx)
 {
 	RecordExecKey(threadIdx, strKey);
+	vecOutVal.clear();
 
 	RedisCmdBuilder cmdBuilder;
 	cmdBuilder << "HMGET" << strKey;
@@ -413,6 +414,7 @@ REDIS_RESULT RedisMgr::HGetAll(const std::string &strKey, StringMap &mapOutVal, 
 	RedisCmdBuilder cmdBuilder;
 	cmdBuilder << "HGETALL" << strKey;
 	cmdBuilder.Commit();
+	mapOutVal.clear();
 
 	redisReply *reply = nullptr;
 	auto ret = (REDIS_RESULT)execCmd(threadIdx, cmdBuilder, &reply);
@@ -542,6 +544,7 @@ REDIS_RESULT RedisMgr::HIncrby(const std::string &strKey, const std::string &str
 REDIS_RESULT RedisMgr::HKeys(const std::string &strKey, StringVector &vecOutFileds, s32 threadIdx)
 {
 	RecordExecKey(threadIdx, strKey);
+	vecOutFileds.clear();
 	RedisCmdBuilder cmdBuilder;
 	cmdBuilder << "HKEYS" << strKey;
 	cmdBuilder.Commit();
@@ -598,6 +601,7 @@ REDIS_RESULT RedisMgr::GetListByRange(const std::string &strKey, s32 iStartIndex
 	RedisCmdBuilder cmdBuilder;
 	cmdBuilder << "LRANGE" << strKey << iStartIndex << iStopIndex;
 	cmdBuilder.Commit();
+	vecValue.clear();
 
 	redisReply *reply = nullptr;
 	auto ret = (REDIS_RESULT)execCmd(threadIdx, cmdBuilder, &reply);
@@ -616,7 +620,7 @@ REDIS_RESULT RedisMgr::TrimList(const std::string &strKey, s32 iStartIndex, s32 
 	RecordExecKey(threadIdx, strKey);
 
 	RedisCmdBuilder cmdBuilder;
-	cmdBuilder << "LPUSH" << strKey << iStartIndex << iStopIndex;
+	cmdBuilder << "LTRIM" << strKey << iStartIndex << iStopIndex;
 	cmdBuilder.Commit();
 
 	redisReply *reply = nullptr;
@@ -860,7 +864,11 @@ REDIS_RESULT RedisMgr::SAdd(const std::string &strKey, const std::string &member
 	if (reply != nullptr)
 	{
 		RedisResult result(reply);
-		return REDIS_OK;
+		s64 count = 0;
+		if (result.GetInteger(count))
+			return count == 0 ? REDIS_ERR_OTHER : REDIS_OK;
+
+		return REDIS_ERR_OTHER;
 	}
 
 	return ret;
@@ -883,7 +891,11 @@ REDIS_RESULT RedisMgr::SAdd(const std::string &strKey, const StringVector &vecMe
 	if (reply != nullptr)
 	{
 		RedisResult result(reply);
-		return REDIS_OK;
+		s64 count = 0;
+		if (result.GetInteger(count))
+			return count == 0 ? REDIS_ERR_OTHER : REDIS_OK;
+
+		return REDIS_ERR_OTHER;
 	}
 
 	return ret;
@@ -892,7 +904,7 @@ REDIS_RESULT RedisMgr::SAdd(const std::string &strKey, const StringVector &vecMe
 REDIS_RESULT RedisMgr::SMembers(const std::string &strKey, StringVector &vecResult, s32 threadIdx)
 {
 	RecordExecKey(threadIdx, strKey);
-
+	vecResult.clear();
 	RedisCmdBuilder cmdBuilder;
 	cmdBuilder << "SMEMBERS" << strKey;
 	cmdBuilder.Commit();

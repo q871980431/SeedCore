@@ -6,25 +6,25 @@
 #include "AtomicIntrusiveLinkedList.h"
 #include <thread>
 
-struct TestNode 
-{
-	s32 id;
-	folly::AtomicIntrusiveLinkedListHook<TestNode> hook_;
-};
-typedef folly::AtomicIntrusiveLinkedList<TestNode, &TestNode::hook_> TestNodeList;
 
 class RedisTest : public IUnitTestInstance
 {
 public:
 	virtual void StartTest(core::IKernel *kernel) override;
 
+private:
+	void TestSyncCall();
+	void StringUnitTest();
+	void HashUnitTest();
+	void ListUnitTest();
+	void SetUnitTest();
+
+
+private:
+	std::string buildTestKey(const std::string &oldKey);
 protected:
 private:
 	static IRedisMgr	*s_redisMgr;
-	std::thread		s_producter;
-	std::thread		s_consumer;
-	TestNodeList	s_nodeList;
-	bool			_close{false};
 };
 
 

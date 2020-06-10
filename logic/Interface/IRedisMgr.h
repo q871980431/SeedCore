@@ -11,11 +11,20 @@
 #include <map>
 #include <vector>
 
+//copy form redis read.h
+//#define REDIS_ERR_IO 1 /* Error in read or write */
+//#define REDIS_ERR_EOF 3 /* End of file */
+//#define REDIS_ERR_PROTOCOL 4 /* Protocol error */
+//#define REDIS_ERR_OOM 5 /* Out of memory */
+//#define REDIS_ERR_TIMEOUT 6 /* Timed out */
+//#define REDIS_ERR_OTHER 2 /* Everything else... */
+
+
 enum REDIS_RESULT_CODE
 {
 	REDIS_RESULT_NODATA = -999,
 	REDIS_RESULT_TIMEOUT = -1,
-	REDIS_RESULT_OK = 0
+	REDIS_RESULT_OK = 0,
 };
 
 typedef s32 REDIS_RESULT;
@@ -118,8 +127,7 @@ public:
 	//String
 public:
 	virtual REDIS_RESULT AsyncSet(s64 taskId, const std::string &strKey, const std::string &strVal) = 0;
-	virtual REDIS_RESULT AsyncSetEx(s64 taskId, const std::string &strKey, const std::string &strVal, const s32 ttlSeconds) = 0;
-	virtual REDIS_RESULT AsyncSetNx(s64 taskId, const std::string &strKey, const std::string &strVal) = 0;
+	virtual REDIS_RESULT AsyncSetStringWithOption(s64 taskId, const std::string &strKey, const std::string &strValue, SetCmdOptionType iOption, u32 iExpireMS) = 0;
 	virtual REDIS_RESULT AsyncIncr(s64 taskId, const std::string &strKey, s64 &iOutVal) = 0;
 	virtual REDIS_RESULT AsyncIncrby(s64 taskId, const std::string &strKey, s64 iVal, s64 &iOutVal) = 0;
 	virtual REDIS_RESULT AsyncDecr(s64 taskId, const std::string &strKey, s64 &iOutVal) = 0;

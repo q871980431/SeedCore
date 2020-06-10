@@ -17,6 +17,7 @@
 const int32_t REATTEMPT_SLEEP_TIME = 1000;
 const int32_t CONNECTION_TIMER_TIME =  60 * 1000;
 const int32_t REDIS_KEY_TOP_COUNT = 20;
+int32_t REDIS_ASYNC_BATCH_CMD_COUNT = 16;
 
 RedisMgr * RedisMgr::s_self = nullptr;
 IKernel * RedisMgr::s_kernel = nullptr;
@@ -37,8 +38,10 @@ bool RedisMgr::Initialize(IKernel *kernel)
 		redisContext *ctx = CreateRedisContext(s_connectionConfig.connectTV);
 		if (ctx == nullptr)
 			return false;
+
 		RedisConnection connection;
 		connection.ctx = ctx;
+		connection._threadCmdList = NEW RedisCmdList();
 #ifdef _DEBUG
 		connection._watchMutex = NEW std::mutex();
 #endif
@@ -54,42 +57,7 @@ bool RedisMgr::Initialize(IKernel *kernel)
 
 
 bool RedisMgr::Launched(IKernel *kernel)
-{
-	bool del;
-	Del("xuping", del);
-	std::string content;
-	int32_t getRet = Get("xuping", content);
-	bool success;
-	SetStringWithOption("xuping", "this is xuping", SetCmdOptionType_NX, 0, success);
-	RedisCmdBuilder builder;
-	builder << "keys" << "*";
-	builder.Commit();
-	auto &connection = GetRedisConnection(0);
-	char *newCmd;
-	int len;
-	len = redisFormatCommand(&newCmd, "GET xuping");
-	redisReply *reply = nullptr;
-	int32_t ret2 = sendAndGetReply(connection.ctx, builder, &reply);
-	if (ret2 == REDIS_OK && reply != nullptr)
-	{
-		ECHO("OK");
-		RedisResult result(reply);
-		bool ret = result.ForeachArray([](RedisResult &tmp) {
-			const char *val;
-			int32_t len;
-			bool ret = tmp.GetStr(val, len);
-			if (ret)
-			{
-				ECHO("Key:%s", val);
-			}
-		});
-		if (ret)
-		{
-			ECHO("keys * ok");
-		}
-	}
-	TestPipeline();
-	
+{	
 	ConnetionProfileTimer *profileTimer = NEW ConnetionProfileTimer();
 	ADD_TIMER(profileTimer, CONNECTION_TIMER_TIME, FOREVER, CONNECTION_TIMER_TIME);
 
@@ -121,7 +89,36 @@ void RedisMgr::OnFlushConnection(s32 threadIdx)
 
 void RedisMgr::OnExecRedisTask(RedisConnection *redisConnection)
 {
+	RedisCmdNode *head = redisConnection->_threadCmdList->cutList();
+	VecRedisBuilder vecRedisBuilder;
+	VecRedisReply vecRedisReply;
 
+	while (head)
+	{
+		auto tmp = head;
+		head = head->hook_.next;
+
+		vecRedisBuilder.push_back(tmp->cmdBuilder);
+		if (vecRedisBuilder.size() == REDIS_ASYNC_BATCH_CMD_COUNT || head == nullptr)
+		{
+			if (vecRedisBuilder.size() > 0)
+				s_self->batchExecCmd(redisConnection->_threadIdx, vecRedisBuilder, vecRedisReply, true);
+
+			for (auto &iter : vecRedisReply)
+			{
+				RedisResult tmpResult(iter);
+			}
+			for (auto iter : vecRedisBuilder)
+			{
+				DEL iter;
+			}
+			vecRedisBuilder.clear();
+			vecRedisReply.clear();
+		}
+		DEL tmp;
+	}
+
+	redisConnection->_postTask = false;
 }
 
 
@@ -150,11 +147,20 @@ void RedisMgr::TestPipeline()
 	}
 }
 
-//void RedisMgr::addAsyncTask(s64 taskId, std::unique_ptr<RedisCmdBuilder> &cmdBuilderPtr)
-//{
-//	auto &connection = GetRedisConnectionInAsync(taskId);
-//	//connection._threadCmdList.push_back(cmdBuilderPtr);
-//}
+void RedisMgr::addAsyncTask(s64 taskId, RedisCmdBuilder *cmdBuilderPtr)
+{
+	auto &connection = GetRedisConnectionInAsync(taskId);
+	RedisCmdNode *cmdNode =  NEW RedisCmdNode();
+	cmdNode->cmdBuilder = cmdBuilderPtr;
+	connection._threadCmdList->insertHead(cmdNode);
+	if (connection._redisTaskHandler == nullptr)
+		connection._redisTaskHandler = NEW RedisTaskHandler(&connection);
+	if (connection._postTask = false)
+	{
+		s_asyncQueue->StartAsync(connection._threadIdx, connection._redisTaskHandler, "async task", __LINE__);
+		connection._postTask = true;
+	}
+}
 
 int32_t RedisMgr::execCmd(s32 threadIdx, const RedisCmdBuilder &cmdBuilder, redisReply **reply, bool reSend)
 {
